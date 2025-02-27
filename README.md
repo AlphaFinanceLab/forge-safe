@@ -350,3 +350,42 @@ addToBatch(
 - The execution script checks if enough approvals have been collected before executing the transaction.
 - Make sure to replace the placeholder addresses in the scripts with your actual Safe address.
 - Never share your private keys. The examples above are for illustration only.
+
+## Using a Custom Batch File Path
+
+By default, the script reads the batch transaction data from `./data/batch.json`. However, you can now specify a custom path to the batch JSON file in several ways:
+
+### 1. Using the Shell Script
+
+The `executeOnchainBatch.sh` script now accepts an optional file path parameter:
+
+```bash
+# Execute using the default batch file path (./data/batch.json)
+./shell/executeOnchainBatch.sh
+
+# Execute using a custom batch file path
+./shell/executeOnchainBatch.sh /path/to/your/custom-batch.json
+```
+
+### 2. Using Forge Script Directly
+
+You can also run the script directly using the Forge CLI with the `--sig` parameter:
+
+```bash
+# Using direct function argument
+forge script ./src/ExecBatchOnchain.s.sol:ExecBatchOnchain --sig "run(string)" "/path/to/your/custom-batch.json" --broadcast --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+```
+
+### 3. Using Environment Variables
+
+If you prefer using environment variables, you can set the `BATCH_FILE_PATH` variable:
+
+```bash
+# Set the batch file path as an environment variable
+export BATCH_FILE_PATH="/path/to/your/custom-batch.json"
+
+# Run the script (it will detect the environment variable)
+forge script ./src/ExecBatchOnchain.s.sol:ExecBatchOnchain --broadcast --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+```
+
+The script will log which batch file is being used to help you confirm the correct file path is being read.

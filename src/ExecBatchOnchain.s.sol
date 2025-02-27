@@ -3,8 +3,12 @@ pragma solidity ^0.8.0;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {stdJson} from "forge-std/StdJson.sol";
-import {ISafe} from "../deps/ISafe.sol";
+import {ISafe} from "dep/ISafe.sol";
 
+import {LibSort} from "lib/solady/src/utils/LibSort.sol";
+
+/// @title ExecBatchOnchain
+/// @notice A script for executing approved Gnosis Safe batch transactions onchain
 contract ExecBatchOnchain is Script {
     using stdJson for string;
 
@@ -21,8 +25,13 @@ contract ExecBatchOnchain is Script {
         uint256 nonce;
     }
 
-    function run() public {
-        string memory json = vm.readFile("./data/batch.json");
+    address[] private approvingOwners;
+    
+    // Script accepts a batch file path as a CLI argument
+    function run(string memory batchFilePath) public {
+        console2.log("Using batch file:", batchFilePath);
+
+        string memory json = vm.readFile(batchFilePath);
         Batch memory batch;
         batch.to = json.readAddress(".to");
         batch.value = json.readUint(".value");
@@ -35,8 +44,7 @@ contract ExecBatchOnchain is Script {
         batch.refundReceiver = payable(json.readAddress(".refundReceiver"));
         batch.nonce = json.readUint(".nonce");
 
-        address safeAddress = vm.envAddress("SAFE");
-        ISafe SAFE = ISafe(payable(safeAddress));
+        ISafe SAFE = ISafe(payable(vm.envAddress("SAFE_ADDRESS")));
 
         // Compute transaction hash
         bytes32 txHash = SAFE.getTransactionHash(
@@ -47,29 +55,47 @@ contract ExecBatchOnchain is Script {
 
         {
         // Check if the transaction has enough approvals
-        // uint256 threshold = SAFE.getThreshold();
+        uint256 threshold = SAFE.getThreshold();
         uint256 approvalCount = 0;
         
         // Count approvals by checking each owner
         address[] memory owners = SAFE.getOwners();
         for (uint256 i = 0; i < owners.length; i++) {
             if (SAFE.approvedHashes(owners[i], txHash) == 1) {
+                approvingOwners.push(owners[i]);
                 approvalCount++;
             }
         }
-        
-        require(approvalCount >= SAFE.getThreshold(), "Not enough approvals");
+            
+        require(approvalCount >= threshold, "Not enough approvals");
 
         console2.log("Executing transaction with hash:", vm.toString(txHash));
-        console2.log("Approvals:", approvalCount, "Threshold:", SAFE.getThreshold());
+        console2.log("Approvals:", approvalCount, "Threshold:", threshold);
+        }
+
+        // Encode a signature based on the approving owners
+        
+        // Sort the addresses in ascending order
+        address[] memory sortedApprovingOwners = approvingOwners;
+        LibSort.sort(sortedApprovingOwners);
+
+        // Construct the signature using the sorted addresses
+        bytes memory signatures = new bytes(0);
+        for (uint256 i = 0; i < sortedApprovingOwners.length; i++) {
+            signatures = abi.encodePacked(
+                signatures,
+                uint256(uint160(sortedApprovingOwners[i])),
+                bytes32(0),
+                uint8(1)
+            );
         }
 
         // Execute the transaction
-        vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
+        vm.startBroadcast();
         bool success = SAFE.execTransaction(
             batch.to, batch.value, batch.data, batch.operation,
             batch.safeTxGas, batch.baseGas, batch.gasPrice,
-            batch.gasToken, batch.refundReceiver, bytes("")
+            batch.gasToken, batch.refundReceiver, signatures
         );
         vm.stopBroadcast();
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "../src/BatchOnchainScript.sol";
+import "src/BatchOnchain.s.sol";
 
 // A simple ERC20 interface for testing token approvals
 interface IERC20Test {
@@ -13,7 +13,7 @@ interface IERC20Test {
 /**
  * @title TestOnchainBatch
  * @dev A simple script to test the Gnosis Safe batch functionality with a basic test transaction.
- * To run: forge script script/TestOnchainBatch.s.sol:TestOnchainBatch --rpc-url $RPC_URL -vvvv
+ * To run: forge script ./script/TestOnchainBatch.s.sol:TestOnchainBatch --rpc-url $RPC_URL -vvvv
  */
 contract TestOnchainBatch is BatchOnchainScript {
     

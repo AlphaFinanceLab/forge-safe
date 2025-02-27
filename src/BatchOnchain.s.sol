@@ -4,8 +4,8 @@ pragma solidity ^0.8.0;
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 
-import {IMultiSend} from "../deps/IMultiSend.sol";
-import {ISafe} from "../deps/ISafe.sol";
+import {IMultiSend} from "dep/IMultiSend.sol";
+import {ISafe} from "dep/ISafe.sol";
 
 /// @title BatchScript - A script for creating and executing Gnosis Safe batch transactions
 /// @notice This contract provides utilities for building batch transactions with on-chain approvals
@@ -174,5 +174,41 @@ contract BatchOnchainScript is Script {
         batch.gasToken = address(0);
         batch.refundReceiver = payable(address(0));
         batch.nonce = nonce;
+    }
+
+    /// @notice Convenience function to encode a batch transaction from a JSON file
+    ///         and return the transaction hash
+    /// @param safe_ The address of the Gnosis Safe
+    /// @param batchFilePath Path to the JSON batch file
+    /// @return txHash The hash of the transaction
+    function encodeBatchFromFile(address safe_, string memory batchFilePath) public view returns (bytes32 txHash) {
+        require(safe_ != address(0), "Safe address cannot be zero");
+        
+        ISafe SAFE = ISafe(payable(safe_));
+        
+        // Read and parse the batch JSON file
+        string memory json = vm.readFile(batchFilePath);
+        
+        // Parse batch data from JSON
+        address to = abi.decode(vm.parseJson(json, ".to"), (address));
+        uint256 value = abi.decode(vm.parseJson(json, ".value"), (uint256));
+        bytes memory data = abi.decode(vm.parseJson(json, ".data"), (bytes));
+        ISafe.Operation operation = ISafe.Operation(abi.decode(vm.parseJson(json, ".operation"), (uint8)));
+        uint256 safeTxGas = abi.decode(vm.parseJson(json, ".safeTxGas"), (uint256));
+        uint256 baseGas = abi.decode(vm.parseJson(json, ".baseGas"), (uint256));
+        uint256 gasPrice = abi.decode(vm.parseJson(json, ".gasPrice"), (uint256));
+        address gasToken = abi.decode(vm.parseJson(json, ".gasToken"), (address));
+        address payable refundReceiver = payable(abi.decode(vm.parseJson(json, ".refundReceiver"), (address)));
+        uint256 nonce = abi.decode(vm.parseJson(json, ".nonce"), (uint256));
+        
+        // Compute transaction hash
+        txHash = SAFE.getTransactionHash(
+            to, value, data, operation,
+            safeTxGas, baseGas, gasPrice,
+            gasToken, refundReceiver, nonce
+        );
+        
+        console2.log("Transaction hash from file:", vm.toString(txHash));
+        return txHash;
     }
 }
