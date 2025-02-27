@@ -11,5 +11,6 @@ remappings = [
     'forge-std/=lib/forge-std/src',
     'solmate/=lib/solmate/src',
     'surl/=lib/surl/src',
+    'safe-contracts/=lib/safe-contracts/contracts/',
 ]
 ffi = true

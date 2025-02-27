@@ -1,53 +1,71 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.0;
 
-import {BatchScript} from "src/BatchScript.sol";
+import "./BatchScript.sol";
 
-interface ICrossChainBridge {
-    /// @dev path_ = abi.encodePacked(remoteAddress, localAddress)
-    function setTrustedRemote(
-        uint16 srcChainId_,
-        bytes calldata path_
-    ) external;
+// A simple ERC20 interface for testing token approvals
+interface IERC20Test {
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address to, uint256 amount) external returns (bool);
+    function approve(address spender, uint256 amount) external returns (bool);
 }
 
-interface IKernel {
-    function executeAction(uint8 action_, address target_) external;
-}
-
-/// @notice A test for Gnosis Safe batching script
-/// @dev    GOERLI
+/**
+ * @title TestBatch
+ * @dev A simple script to test the Gnosis Safe batch functionality with a basic test transaction.
+ * To run: forge script script/testbatch.s.sol:TestBatch --rpc-url $RPC_URL -vvvv
+ */
 contract TestBatch is BatchScript {
-    address localBridgeAddr = 0xefffab0Aa61828c4af926E039ee754e3edE10dAc; // Goerli bridge
-    address remoteBridgeAddr = 0xB01432c01A9128e3d1d70583eA873477B2a1f5e1; // Arb goerli bridge
-    uint16 lzChainId = 10143;
-
-    /// @notice The main script entrypoint
-    function run(bool send_) external isBatch(0x84C0C005cF574D0e5C602EA7b366aE9c707381E0) {
-
-        IKernel kernel = IKernel(0xDb7cf68154bd422dF5196D90285ceA057786b4c3);
-        ICrossChainBridge bridge = ICrossChainBridge(localBridgeAddr);
-
-        // Start batch
-        // Install on kernel
-        // kernel.executeAction(kernel.Action.ActivatePolicy, policy)
-        bytes memory txn1 = abi.encodeWithSelector(
-            IKernel.executeAction.selector,
-            2,
-            address(bridge)
+    // Update this with your actual Safe address for testing
+    address constant TEST_SAFE_ADDRESS = 0x0000000000000000000000000000000000000000;
+    
+    
+    function run() external override {
+        // Use a test Safe address (replace with your actual Safe for real testing)
+        address safeAddress = TEST_SAFE_ADDRESS;
+        
+        console2.log("Building test batch for Safe:", safeAddress);
+        console2.log("----------------------------------------");
+        
+        // Example 1: Simple ETH transfer
+        // Sends a small amount of ETH (0.001 ETH) to a test address
+        address testRecipient = 0x0000000000000000000000000000000000000001;
+        uint256 testAmount = 0.001 ether; // 0.001 ETH in wei
+        
+        console2.log("Adding ETH transfer:");
+        console2.log("  To:", testRecipient);
+        console2.log("  Amount:", testAmount);
+        
+        addToBatch(
+            testRecipient,
+            testAmount,
+            "" // Empty call data for a simple ETH transfer
         );
-        addToBatch(address(kernel), 0, txn1);
-
-        // Call some initialize function on the contract
-        // bridge.setTrustedRemote(vm.envUint("CHAIN_ID"), abi.encodePacked(remoteBridgeAddr, localBridgeAddr));
-        bytes memory txn2 = abi.encodeWithSignature(
-            "setTrustedRemote(uint16,bytes)",
-            lzChainId,
-            abi.encodePacked(remoteBridgeAddr, localBridgeAddr)
+        
+        // Example 2: Token approval (using DAI as an example)
+        // Note: This is just for demonstration, replace with real token addresses
+        address daiToken = 0x6B175474E89094C44Da98b954EedeAC495271d0F; // DAI on Ethereum Mainnet
+        address testSpender = 0x0000000000000000000000000000000000000002;
+        uint256 approvalAmount = 1000 * 1e18; // 1000 DAI (with 18 decimals)
+        
+        console2.log("Adding token approval:");
+        console2.log("  Token:", daiToken);
+        console2.log("  Spender:", testSpender);
+        console2.log("  Amount:", approvalAmount);
+        
+        addToBatch(
+            daiToken,
+            0,
+            abi.encodeWithSelector(
+                IERC20Test.approve.selector,
+                testSpender,
+                approvalAmount
+            )
         );
-        addToBatch(address(bridge), txn2);
-
-        // Execute batch
-        executeBatch(send_);
+        
+        // Build the batch with the Safe address
+        console2.log("----------------------------------------");
+        console2.log("Building batch transaction...");
+        buildBatch(safeAddress);
     }
 }
