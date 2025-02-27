@@ -1,21 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "forge-std/Script.sol";
-import "safe-contracts/Safe.sol";
-import "safe-contracts/libraries/Enum.sol";
+import {Script} from "forge-std/Script.sol";
+import {console2} from "forge-std/console2.sol";
 
-/// @title Interface for the MultiSend contract
-interface IMultiSend {
-    function multiSend(bytes memory transactions) external payable;
-}
+import {IMultiSend} from "../deps/IMultiSend.sol";
+import {ISafe} from "../deps/ISafe.sol";
 
 /// @title BatchScript - A script for creating and executing Gnosis Safe batch transactions
 /// @notice This contract provides utilities for building batch transactions with on-chain approvals
-contract BatchScript is Script {
+contract BatchOnchainScript is Script {
     // NOTE: This is the MultiSend v1.4.1 contract address for most chains. Modify if using a custom deployment.
     address constant SAFE_MULTISEND_ADDRESS = 0x38869bf66a61cF6bDB996A6aE40D5853Fd43B526;
-    
+
     /// @notice Array to store encoded transactions for the batch
     bytes[] internal encodedTxns;
 
@@ -24,7 +21,7 @@ contract BatchScript is Script {
         address to;
         uint256 value;
         bytes data;
-        Enum.Operation operation;
+        ISafe.Operation operation;
         uint256 safeTxGas;
         uint256 baseGas;
         uint256 gasPrice;
@@ -34,10 +31,20 @@ contract BatchScript is Script {
     }
 
     /// @notice Add a standard call operation to the batch
+    /// @param safe The address of the Gnosis Safe
     /// @param to The target address for the transaction
     /// @param value The amount of ETH to send
     /// @param data The calldata for the transaction
-    function addToBatch(address to, uint256 value, bytes memory data) public {
+    /// @return returnData The data returned from the local execution of the call
+    function addToBatch(
+        address safe,
+        address to, 
+        uint256 value, 
+        bytes memory data
+    ) public returns (bytes memory returnData) {
+        if (safe == address(0)) revert("Safe address cannot be zero");
+
+        // Encode the transaction for the batch
         bytes memory encodedTxn = abi.encodePacked(
             uint8(0), // operation (0 for CALL)
             to,
@@ -46,12 +53,44 @@ contract BatchScript is Script {
             data
         );
         encodedTxns.push(encodedTxn);
+        
+        // Execute locally to verify the transaction would succeed
+        console2.log("=== Testing transaction locally from Safe ===");
+        console2.log("Safe:", safe);
+        console2.log("Target:", to);
+        console2.log("Value:", value);
+        
+        // Impersonate the Safe address during the call
+        vm.prank(safe);
+            
+        // Execute the call and capture both success status and returned data
+        bool success;
+        (success, returnData) = to.call{value: value}(data);
+            
+        // If call failed, revert with failure message
+        if (!success) {
+            console2.log("Local execution FAILED");
+            revert("Transaction would fail when executed from the Safe");
+        }
+            
+        console2.log("Local execution: SUCCESS");
+        console2.log("============================");
+        
+        return returnData;
     }
 
     /// @notice Add a delegate call operation to the batch
     /// @param to The target address for the delegate call
     /// @param data The calldata for the transaction
-    function addDelegateCallToBatch(address to, bytes memory data) public {
+    /// @return returnData The data returned from the local execution of the delegatecall
+    function addDelegateCallToBatch(
+        address safeAddress,
+        address to, 
+        bytes memory data
+    ) public returns (bytes memory returnData) {
+        if (safeAddress == address(0)) revert("Safe address cannot be zero");
+
+        // Encode the transaction for the batch
         bytes memory encodedTxn = abi.encodePacked(
             uint8(1), // operation (1 for DELEGATECALL)
             to,
@@ -60,6 +99,29 @@ contract BatchScript is Script {
             data
         );
         encodedTxns.push(encodedTxn);
+        
+        // Execute locally to verify the transaction would succeed
+        console2.log("=== Testing delegatecall locally from Safe ===");
+        console2.log("Safe:", safeAddress);
+        console2.log("Target:", to);
+            
+        // Impersonate the Safe address during the delegatecall
+        vm.prank(safeAddress);
+            
+        // Execute the delegatecall and capture both success status and returned data
+        bool success;
+        (success, returnData) = to.delegatecall(data);
+            
+        // If call failed, revert with failure message
+        if (!success) {
+            console2.log("Local execution FAILED");
+            revert("Delegatecall would fail when executed from the Safe");
+        }
+            
+        console2.log("Local execution: SUCCESS");
+        console2.log("============================");
+        
+        return returnData;
     }
 
     /// @notice Build the batch transaction and save to JSON
@@ -67,7 +129,7 @@ contract BatchScript is Script {
     function buildBatch(address safe_) internal {
         require(safe_ != address(0), "Safe address cannot be zero");
         
-        Safe SAFE = Safe(payable(safe_));
+        ISafe SAFE = ISafe(payable(safe_));
         uint256 nonce = SAFE.nonce();
         Batch memory batch = _createBatch(nonce);
 
@@ -100,7 +162,7 @@ contract BatchScript is Script {
     function _createBatch(uint256 nonce) private view returns (Batch memory batch) {
         batch.to = SAFE_MULTISEND_ADDRESS;
         batch.value = 0;
-        batch.operation = Enum.Operation.DelegateCall;
+        batch.operation = ISafe.Operation.DELEGATECALL;
         bytes memory data;
         for (uint256 i; i < encodedTxns.length; ++i) {
             data = bytes.concat(data, encodedTxns[i]);
@@ -113,17 +175,4 @@ contract BatchScript is Script {
         batch.refundReceiver = payable(address(0));
         batch.nonce = nonce;
     }
-
-    /// @notice Template run function - override this in derived contracts
-    /// @dev Implement this function with your specific transactions
-    function run() external virtual {
-        // Replace with your actual Safe address
-        address safeAddress = 0x0000000000000000000000000000000000000000;
-        
-        // Add your transactions to the batch
-        // Example: addToBatch(targetAddress, ethValue, callData);
-        
-        // Build and output the batch transaction
-        buildBatch(safeAddress);
-    }
-} 
+}

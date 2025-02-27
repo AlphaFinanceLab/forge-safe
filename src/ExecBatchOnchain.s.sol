@@ -3,17 +3,16 @@ pragma solidity ^0.8.0;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {stdJson} from "forge-std/StdJson.sol";
-import {Safe} from "safe-contracts/Safe.sol";
-import {Enum} from "safe-contracts/libraries/Enum.sol";
+import {ISafe} from "../deps/ISafe.sol";
 
-contract ExecBatchWithApprovals is Script {
+contract ExecBatchOnchain is Script {
     using stdJson for string;
 
     struct Batch {
         address to;
         uint256 value;
         bytes data;
-        Enum.Operation operation;
+        ISafe.Operation operation;
         uint256 safeTxGas;
         uint256 baseGas;
         uint256 gasPrice;
@@ -28,7 +27,7 @@ contract ExecBatchWithApprovals is Script {
         batch.to = json.readAddress(".to");
         batch.value = json.readUint(".value");
         batch.data = json.readBytes(".data");
-        batch.operation = Enum.Operation(json.readUint(".operation"));
+        batch.operation = ISafe.Operation(json.readUint(".operation"));
         batch.safeTxGas = json.readUint(".safeTxGas");
         batch.baseGas = json.readUint(".baseGas");
         batch.gasPrice = json.readUint(".gasPrice");
@@ -37,7 +36,7 @@ contract ExecBatchWithApprovals is Script {
         batch.nonce = json.readUint(".nonce");
 
         address safeAddress = vm.envAddress("SAFE");
-        Safe SAFE = Safe(payable(safeAddress));
+        ISafe SAFE = ISafe(payable(safeAddress));
 
         // Compute transaction hash
         bytes32 txHash = SAFE.getTransactionHash(
@@ -46,11 +45,9 @@ contract ExecBatchWithApprovals is Script {
             batch.gasToken, batch.refundReceiver, batch.nonce
         );
 
-        // Get the sender address (the one executing the transaction)
-        address sender = vm.addr(vm.envUint("PRIVATE_KEY"));
-        
+        {
         // Check if the transaction has enough approvals
-        uint256 threshold = SAFE.getThreshold();
+        // uint256 threshold = SAFE.getThreshold();
         uint256 approvalCount = 0;
         
         // Count approvals by checking each owner
@@ -61,10 +58,11 @@ contract ExecBatchWithApprovals is Script {
             }
         }
         
-        require(approvalCount >= threshold, "Not enough approvals");
+        require(approvalCount >= SAFE.getThreshold(), "Not enough approvals");
 
         console2.log("Executing transaction with hash:", vm.toString(txHash));
-        console2.log("Approvals:", approvalCount, "Threshold:", threshold);
+        console2.log("Approvals:", approvalCount, "Threshold:", SAFE.getThreshold());
+        }
 
         // Execute the transaction
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));

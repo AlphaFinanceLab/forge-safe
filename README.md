@@ -184,6 +184,51 @@ Update the `SAFE_MULTISEND_ADDRESS` constant in `BatchScript.sol` to match your 
 
 ## Advanced Usage
 
+### Local Testing of Transactions
+
+The BatchScript now includes functionality to locally test transactions before adding them to the batch. This allows you to verify that transactions will work as expected in the current chain state:
+
+```solidity
+// Enable or disable local testing globally
+setLocalTesting(true); // or false
+
+// Add a transaction with default testing behavior (follows global setting)
+bool success = addToBatch(
+    tokenAddress,
+    0,
+    abi.encodeWithSelector(IERC20.transfer.selector, recipient, amount)
+);
+
+// Check if the transaction succeeded
+if (success) {
+    console2.log("Transaction will succeed");
+} else {
+    console2.log("Transaction will fail");
+}
+
+// Override global setting for a specific transaction
+addToBatch(
+    contractAddress,
+    0,
+    callData,
+    true // Force enable testing for this transaction
+);
+```
+
+To run a comprehensive example that demonstrates local testing:
+
+```sh
+forge script script/LocalTestingExample.s.sol:LocalTestingExample --rpc-url $RPC_URL -vvvv
+```
+
+This feature is particularly useful for:
+- Validating complex DeFi interactions before execution
+- Ensuring that transactions are called in the correct order
+- Testing that your contracts have sufficient balances for transfers
+- Verifying permission settings before attempting operations
+
+**Note:** Some transactions may fail in the local test but succeed in the actual execution or vice versa, depending on differences between your local fork state and the real chain state when the batch is executed.
+
 ### Custom Operations (DelegateCall)
 
 By default, `addToBatch` creates CALL operations (operation type 0). If you need to use DELEGATECALL (operation type 1), you can modify the BatchScript.sol file to add this functionality:
