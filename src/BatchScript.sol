@@ -194,7 +194,7 @@ abstract contract BatchScript is Script {
         // Set initial batch fields
         batch.to = SAFE_MULTISEND_ADDRESS;
         batch.value = 0;
-        batch.operation = Operation.DELEGATECALL;
+        batch.operation = Operation.CALL;
 
         // Encode the batch calldata. The list of transactions is tightly packed.
         bytes memory data;
