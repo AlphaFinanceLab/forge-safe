@@ -88,7 +88,14 @@ abstract contract BatchScript is Script {
         bytes signature;
     }
 
+    struct Tx {
+        address to;
+        uint256 value;
+        bytes data;
+    }
+
     bytes[] public encodedTxns;
+    Tx[] public encodedTxnsWithCall;
 
     // Modifiers
 
@@ -104,9 +111,12 @@ abstract contract BatchScript is Script {
         } else if (chainId == 5) {
             SAFE_API_BASE_URL = "https://safe-transaction-goerli.safe.global/api/v1/safes/";
             SAFE_MULTISEND_ADDRESS = 0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761;
+        } else if (chainId == 11155111) {
+            SAFE_API_BASE_URL = "https://safe-transaction-sepolia.safe.global/api/v1/safes/";
+            SAFE_MULTISEND_ADDRESS = 0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761;
         } else if (chainId == 56) {
             SAFE_API_BASE_URL = "https://safe-transaction-bsc.safe.global/api/v1/safes/";
-            SAFE_MULTISEND_ADDRESS = 0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761;
+            SAFE_MULTISEND_ADDRESS = 0x40A2aCCbd92BCA938b02010E17A5b8929b49130D;
         } else if (chainId == 8453) {
             SAFE_API_BASE_URL = "https://safe-transaction-base.safe.global/api/v1/safes/";
             SAFE_MULTISEND_ADDRESS = 0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761;
@@ -134,6 +144,11 @@ abstract contract BatchScript is Script {
         }
 
         // Run batch
+        _;
+    }
+
+    modifier isCorrectSender(address sender_) {
+        require(sender_ == vm.envAddress("SENDER"), "wrong sender");
         _;
     }
 
@@ -176,12 +191,68 @@ abstract contract BatchScript is Script {
         }
     }
 
+    function addToCallOnlyBatch(address to_, uint256 value_, bytes memory data_) internal returns (bytes memory) {
+        // Add transaction to batch array
+        encodedTxnsWithCall.push(Tx({to: to_, value: value_, data: data_}));
+
+        // Simulate transaction and get return value
+        vm.prank(safe);
+        (bool success, bytes memory data) = to_.call{value: value_}(data_);
+        if (success) {
+            return data;
+        } else {
+            revert(string(data));
+        }
+    }
+
     // Simulate then send the batch to the Safe API. If `send_` is `false`, the
     // batch will only be simulated.
-    function executeBatch(bool send_) internal {
+    function executeBatch(bool send_) internal isCorrectSender(msg.sender) {
         Batch memory batch = _createBatch(safe);
         // _simulateBatch(safe, batch);
         if (send_) {
+            batch = _signBatch(safe, batch);
+            _sendBatch(safe, batch);
+        }
+    }
+
+    // Encodes the stored encoded transactions into a single Multisend transaction
+    function _createTxn(address safe_, address to_, uint256 value_, bytes memory data_)
+        private
+        returns (Batch memory batch)
+    {
+        // require(encodedTxns.length == 1, "Only one transaction is allowed");
+        // Set initial batch fields
+        batch.to = to_;
+        batch.value = value_;
+        batch.operation = Operation.CALL;
+
+        // Encode the batch calldata. The list of transactions is tightly packed.
+        batch.data = data_;
+
+        // Batch gas parameters can all be zero and don't need to be set
+
+        // Get the safe nonce
+        batch.nonce = _getNonce(safe_);
+
+        // Get the transaction hash
+        batch.txHash = _getTransactionHash(safe_, batch);
+    }
+
+    function executeTxn(address to_, uint256 value_, bytes memory data_) internal isCorrectSender(msg.sender) {
+        Batch memory batch = _createTxn(safe, to_, value_, data_);
+        batch = _signBatch(safe, batch);
+        _sendBatch(safe, batch);
+    }
+
+    function executeCallOnlyBatch(bool send_) internal isCorrectSender(msg.sender) {
+        if (!send_) {
+            return;
+        }
+
+        for (uint256 i; i < encodedTxnsWithCall.length; ++i) {
+            Batch memory batch =
+                _createTxn(safe, encodedTxnsWithCall[i].to, encodedTxnsWithCall[i].value, encodedTxnsWithCall[i].data);
             batch = _signBatch(safe, batch);
             _sendBatch(safe, batch);
         }
@@ -194,7 +265,7 @@ abstract contract BatchScript is Script {
         // Set initial batch fields
         batch.to = SAFE_MULTISEND_ADDRESS;
         batch.value = 0;
-        batch.operation = Operation.CALL;
+        batch.operation = Operation.DELEGATECALL;
 
         // Encode the batch calldata. The list of transactions is tightly packed.
         bytes memory data;
@@ -410,10 +481,8 @@ abstract contract BatchScript is Script {
         (uint256 status, bytes memory data) = endpoint.get();
         if (status == 200) {
             string memory resp = string(data);
-            string[] memory results;
-            results = resp.readStringArray(".results");
-            if (results.length == 0) return 0;
-            return resp.readUint(".results[0].nonce") + 1;
+            console2.log("resp", resp);
+            return uint256(resp.readIntOr(".results[0].nonce", -1) + 1);
         } else {
             revert("Get nonce failed!");
         }
