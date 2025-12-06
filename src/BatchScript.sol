@@ -115,7 +115,7 @@ abstract contract BatchScript is Script {
             SAFE_API_BASE_URL = "https://safe-transaction-sepolia.safe.global/api/v1/safes/";
             SAFE_MULTISEND_ADDRESS = 0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761;
         } else if (chainId == 56) {
-            SAFE_API_BASE_URL = "https://safe-transaction-bsc.safe.global/api/v1/safes/";
+            SAFE_API_BASE_URL = "https://api.safe.global/tx-service/bnb/api/v1/safes/";
             SAFE_MULTISEND_ADDRESS = 0x40A2aCCbd92BCA938b02010E17A5b8929b49130D;
         } else if (chainId == 8453) {
             SAFE_API_BASE_URL = "https://safe-transaction-base.safe.global/api/v1/safes/";
